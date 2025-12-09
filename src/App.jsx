@@ -91,8 +91,14 @@ export default function EventAttendeeDatabase() {
     
     if (authMode === 'signup') {
       try {
-        const usersResult = await window.storage.get('users', true);
-        const users = usersResult ? JSON.parse(usersResult.value) : [];
+        let users = [];
+        try {
+          const usersResult = await window.storage.get('users', true);
+          users = usersResult ? JSON.parse(usersResult.value) : [];
+        } catch (error) {
+          console.log('No existing users, creating new list');
+          users = [];
+        }
         
         if (users.find(u => u.email === authForm.email)) {
           alert('Email already registered');
@@ -110,7 +116,11 @@ export default function EventAttendeeDatabase() {
         };
         
         users.push(newUser);
-        await window.storage.set('users', JSON.stringify(users), true);
+        const saveResult = await window.storage.set('users', JSON.stringify(users), true);
+        
+        if (!saveResult) {
+          throw new Error('Failed to save user data');
+        }
         
         const userSession = { ...newUser };
         delete userSession.password;
@@ -119,14 +129,21 @@ export default function EventAttendeeDatabase() {
         
         setShowAuthForm(false);
         setAuthForm({ email: '', password: '', firstName: '', lastName: '', isAdmin: false });
+        alert('Account created successfully!');
       } catch (error) {
         console.error('Signup failed:', error);
-        alert('Signup failed. Please try again.');
+        alert(`Signup failed: ${error.message || 'Please try again.'}`);
       }
     } else {
       try {
-        const usersResult = await window.storage.get('users', true);
-        const users = usersResult ? JSON.parse(usersResult.value) : [];
+        let users = [];
+        try {
+          const usersResult = await window.storage.get('users', true);
+          users = usersResult ? JSON.parse(usersResult.value) : [];
+        } catch (error) {
+          alert('No users found. Please sign up first.');
+          return;
+        }
         
         const user = users.find(u => u.email === authForm.email && u.password === authForm.password);
         
@@ -143,7 +160,7 @@ export default function EventAttendeeDatabase() {
         }
       } catch (error) {
         console.error('Login failed:', error);
-        alert('Login failed. Please try again.');
+        alert(`Login failed: ${error.message || 'Please try again.'}`);
       }
     }
   };
