@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Calendar, Search, Trash2, Edit2, X, Check } from 'lucide-react';
+import { Plus, Users, Calendar, Search, Trash2, Edit2, X, Check, Share2, Copy, Link } from 'lucide-react';
 
 export default function EventAttendeeDatabase() {
   const [events, setEvents] = useState([]);
@@ -36,10 +36,42 @@ export default function EventAttendeeDatabase() {
     isAdmin: false
   });
 
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [eventToShare, setEventToShare] = useState(null);
+
   useEffect(() => {
     checkAuth();
     loadData();
   }, []);
+
+  useEffect(() => {
+    // Check for event in URL after events are loaded
+    if (events.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get('event');
+      console.log('Checking URL for event ID:', eventId);
+      console.log('Available events:', events);
+      
+      if (eventId) {
+        const event = events.find(e => e.id === eventId);
+        console.log('Found event:', event);
+        
+        if (event) {
+          setSelectedEvent(event);
+          // Scroll to the event details after a short delay
+          setTimeout(() => {
+            const eventDetails = document.querySelector('.bg-white.rounded-lg.shadow-lg.p-6:last-child');
+            if (eventDetails) {
+              eventDetails.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, 300);
+        } else {
+          console.log('Event not found with ID:', eventId);
+          alert('Event not found. It may have been deleted.');
+        }
+      }
+    }
+  }, [events]);
 
   const checkAuth = async () => {
     try {
@@ -55,32 +87,57 @@ export default function EventAttendeeDatabase() {
   const loadData = async () => {
     try {
       const eventsResult = await window.storage.get('events', true);
-      const attendeesResult = await window.storage.get('attendees', true);
-      
-      if (eventsResult) {
-        setEvents(JSON.parse(eventsResult.value));
-      }
-      if (attendeesResult) {
-        setAttendees(JSON.parse(attendeesResult.value));
+      if (eventsResult && eventsResult.value) {
+        const loadedEvents = JSON.parse(eventsResult.value);
+        setEvents(loadedEvents);
+        console.log('Loaded events:', loadedEvents);
+      } else {
+        console.log('No events found in storage');
+        setEvents([]);
       }
     } catch (error) {
-      console.log('No existing data found, starting fresh');
+      console.log('No existing events found, starting fresh');
+      setEvents([]);
+    }
+
+    try {
+      const attendeesResult = await window.storage.get('attendees', true);
+      if (attendeesResult && attendeesResult.value) {
+        setAttendees(JSON.parse(attendeesResult.value));
+      } else {
+        setAttendees([]);
+      }
+    } catch (error) {
+      console.log('No existing attendees found, starting fresh');
+      setAttendees([]);
     }
   };
 
   const saveEvents = async (updatedEvents) => {
     try {
-      await window.storage.set('events', JSON.stringify(updatedEvents), true);
-      setEvents(updatedEvents);
+      const result = await window.storage.set('events', JSON.stringify(updatedEvents), true);
+      if (result) {
+        console.log('Events saved successfully:', updatedEvents);
+        setEvents(updatedEvents);
+      } else {
+        console.error('Failed to save events - storage returned null');
+        alert('Failed to save event. Please try again.');
+      }
     } catch (error) {
       console.error('Failed to save events:', error);
+      alert('Failed to save event. Please try again.');
     }
   };
 
   const saveAttendees = async (updatedAttendees) => {
     try {
-      await window.storage.set('attendees', JSON.stringify(updatedAttendees), true);
-      setAttendees(updatedAttendees);
+      const result = await window.storage.set('attendees', JSON.stringify(updatedAttendees), true);
+      if (result) {
+        console.log('Attendees saved successfully');
+        setAttendees(updatedAttendees);
+      } else {
+        console.error('Failed to save attendees - storage returned null');
+      }
     } catch (error) {
       console.error('Failed to save attendees:', error);
     }
@@ -177,9 +234,16 @@ export default function EventAttendeeDatabase() {
       ...eventForm,
       createdAt: new Date().toISOString()
     };
-    await saveEvents([...events, newEvent]);
+    
+    const updatedEvents = [...events, newEvent];
+    await saveEvents(updatedEvents);
+    
     setEventForm({ name: '', date: '', location: '', description: '' });
     setShowEventForm(false);
+    
+    // Show share modal with the new event
+    setEventToShare(newEvent);
+    setShowShareModal(true);
   };
 
   const handleUpdateEvent = async (e) => {
@@ -264,6 +328,25 @@ export default function EventAttendeeDatabase() {
   const hasUserRSVPd = (eventId) => {
     if (!currentUser) return false;
     return attendees.some(a => a.eventId === eventId && a.userId === currentUser.id);
+  };
+
+  const getEventLink = (eventId) => {
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?event=${eventId}`;
+  };
+
+  const copyEventLink = (eventId) => {
+    const link = getEventLink(eventId);
+    navigator.clipboard.writeText(link).then(() => {
+      alert('Event link copied to clipboard!');
+    }).catch(() => {
+      alert('Failed to copy link. Please copy it manually.');
+    });
+  };
+
+  const openShareModal = (event) => {
+    setEventToShare(event);
+    setShowShareModal(true);
   };
 
   return (
@@ -423,6 +506,52 @@ export default function EventAttendeeDatabase() {
             </div>
           )}
 
+          {showShareModal && eventToShare && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Share Event</h2>
+                  <button onClick={() => setShowShareModal(false)}>
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Share this link with others so they can register for <strong>{eventToShare.name}</strong>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={getEventLink(eventToShare.id)}
+                        readOnly
+                        className="flex-1 border rounded-lg px-3 py-2 text-sm bg-gray-50"
+                      />
+                      <button
+                        onClick={() => copyEventLink(eventToShare.id)}
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-2"
+                      >
+                        <Copy className="w-4 h-4" />
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-xs text-blue-800">
+                      <strong>Tip:</strong> Anyone with this link can view and register for this event. No login required to view, but login is required to RSVP.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="w-full bg-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 mt-4"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
           {showEventForm && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-lg p-6 max-w-md w-full">
@@ -520,6 +649,16 @@ export default function EventAttendeeDatabase() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          openShareModal(event);
+                        }}
+                        className="text-indigo-600 hover:text-indigo-800 p-1"
+                        title="Share event"
+                      >
+                        <Share2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           startEditEvent(event);
                         }}
                         className="text-blue-600 hover:text-blue-800 p-1"
@@ -569,8 +708,19 @@ export default function EventAttendeeDatabase() {
         {selectedEvent && (
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800">{selectedEvent.name}</h2>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-2xl font-bold text-gray-800">{selectedEvent.name}</h2>
+                  {currentUser?.isAdmin && (
+                    <button
+                      onClick={() => openShareModal(selectedEvent)}
+                      className="text-indigo-600 hover:text-indigo-800 p-1"
+                      title="Share event link"
+                    >
+                      <Share2 className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
                 <p className="text-gray-600">
                   {new Date(selectedEvent.date).toLocaleDateString()} • {selectedEvent.location}
                 </p>
